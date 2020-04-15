@@ -96,6 +96,9 @@ celerybeat-schedule
 # SageMath parsed files
 *.sage.py
 
+# Pycharm
+.idea/
+
 # Environments
 .env
 .venv
