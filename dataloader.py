@@ -21,8 +21,8 @@ def load_train_data(dataset_name, batch_size, val_split=0.9, dataset_seed=0):
     val_indices = indices[train_amnt:]
     train_sampler = SubsetRandomSampler(train_indices)
     val_sampler = SubsetRandomSampler(val_indices)
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, sampler=val_sampler)
+    train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
+    val_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=val_sampler)
     return train_loader, val_loader
 
 

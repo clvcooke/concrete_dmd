@@ -5,7 +5,10 @@ __pycache__/
 
 # C extensions
 *.so
-
+# ignoring local data
+/data
+/wandb
+/logits
 # Distribution / packaging
 .Python
 build/

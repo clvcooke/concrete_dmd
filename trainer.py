@@ -1,7 +1,7 @@
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
 from utils import AverageMeter
-import torch.functional as F
+import torch.nn.functional as F
 import numpy as np
 import torch
 import wandb
@@ -57,7 +57,7 @@ class FixedTrainer:
             avg_acc.update(acc)
             avg_loss.update(loss.item())
             pbar.set_description(f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}')
-        return avg_loss, avg_acc
+        return avg_loss.avg, avg_acc.avg
 
     def record_logits(self, step, directory='./'):
         """
@@ -66,6 +66,7 @@ class FixedTrainer:
         """
         logits = [dmd.logits.cpu().detach() for dmd in self.network.dmds]
         save_dir = os.path.join(directory, 'logits', self.run_name, f'epoch_{step}')
+        os.makedirs(save_dir, exist_ok=True)
         for i, logit in enumerate(logits):
             np.save(os.path.join(save_dir, f'pattern_{i}.npy'), logit)
         # save the logits to disk based on the wandb run id
