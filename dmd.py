@@ -12,7 +12,7 @@ class FixedDMDSpatial(nn.Module):
         self.output_size = output_size
         # binary mask
         self.logits = nn.Parameter(
-            torch.ones((self.input_size), dtype=torch.float, requires_grad=True) / self.input_size)
+            torch.ones((self.input_size), dtype=torch.float, requires_grad=True)/(self.input_size))
         self.temperature = temperature
         self.sense_scale = nn.Parameter(
             torch.ones(self.output_size, dtype=torch.float, requires_grad=True) / self.input_size)
