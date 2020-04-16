@@ -8,19 +8,44 @@ import wandb
 import os
 
 
-class AdaptiveTrainer:
-    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
+class Trainer:
+    def __init__(self, network, train_loader, val_loader, epochs, use_gpu):
         self.use_gpu = use_gpu
         self.epochs = epochs
-        if use_gpu:
-            network.cuda()
-            network.first_dmd.cuda()
-        parameters = list(network.parameters()) + list(network.first_dmd.parameters())
-        self.optimizer = AdamW(parameters, lr=init_lr)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.network = network
         self.run_name = os.path.basename(wandb.run.path)
+        self.optimizer = None
+
+    def run_one_epoch(self, loader, curr_epoch, training=True):
+        pbar = tqdm(loader, total=len(loader))
+        avg_loss = AverageMeter()
+        avg_acc = AverageMeter()
+        for data, target in pbar:
+            if self.use_gpu:
+                data, target = data.cuda(), target.cuda()
+            output = self.network(data, cold=not training)
+            loss = F.nll_loss(output, target)
+            if training:
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+            acc = torch.sum(output.detach().argmax(dim=1) == target.detach()).float() / len(data)
+            avg_acc.update(acc)
+            avg_loss.update(loss.item())
+            pbar.set_description(f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}')
+        return avg_loss.avg, avg_acc.avg
+
+
+class AdaptiveTrainer(Trainer):
+    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
+        super().__init__(network, train_loader, val_loader, epochs, use_gpu)
+        if use_gpu:
+            network.cuda()
+            network.first_dmd.cuda()
+        parameters = list(self.network.parameters()) + list(self.network.first_dmd.parameters())
+        self.optimizer = AdamW(parameters, lr=init_lr)
 
     def train(self):
         for epoch in range(self.epochs):
@@ -36,41 +61,17 @@ class AdaptiveTrainer:
                 'val_acc': val_acc
             }, step=epoch + 1)
 
-    def run_one_epoch(self, loader, curr_epoch, training=True):
-        pbar = tqdm(loader, total=len(loader))
-        avg_loss = AverageMeter()
-        avg_acc = AverageMeter()
-        for data, target in pbar:
-            if self.use_gpu:
-                data, target = data.cuda(), target.cuda()
-            output = self.network(data)
-            loss = F.nll_loss(output, target)
-            if training:
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-            acc = torch.sum(output.detach().argmax(dim=1) == target.detach()).float() / len(data)
-            avg_acc.update(acc)
-            avg_loss.update(loss.item())
-            pbar.set_description(f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}')
-        return avg_loss.avg, avg_acc.avg
 
-
-class FixedTrainer:
+class FixedTrainer(Trainer):
     def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
-        self.use_gpu = use_gpu
-        self.epochs = epochs
+        super().__init__(network, train_loader, val_loader, epochs, use_gpu)
         if use_gpu:
-            network.cuda()
-            [dmd.cuda() for dmd in network.dmds]
-        parameters = list(network.parameters())
-        for dmd in network.dmds:
+            self.network.cuda()
+            [dmd.cuda() for dmd in self.network.dmds]
+        parameters = list(self.network.parameters())
+        for dmd in self.network.dmds:
             parameters += list(dmd.parameters())
         self.optimizer = AdamW(parameters, lr=init_lr)
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.network = network
-        self.run_name = os.path.basename(wandb.run.path)
 
     def train(self):
         self.record_logits(0)
@@ -87,25 +88,6 @@ class FixedTrainer:
                 'val_acc': val_acc
             }, step=epoch + 1)
             self.record_logits(epoch + 1)
-
-    def run_one_epoch(self, loader, curr_epoch, training=True):
-        pbar = tqdm(loader, total=len(loader))
-        avg_loss = AverageMeter()
-        avg_acc = AverageMeter()
-        for data, target in pbar:
-            if self.use_gpu:
-                data, target = data.cuda(), target.cuda()
-            output = self.network(data)
-            loss = F.nll_loss(output, target)
-            if training:
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-            acc = torch.sum(output.detach().argmax(dim=1) == target.detach()).float() / len(data)
-            avg_acc.update(acc)
-            avg_loss.update(loss.item())
-            pbar.set_description(f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}')
-        return avg_loss.avg, avg_acc.avg
 
     def record_logits(self, step, directory='./'):
         """

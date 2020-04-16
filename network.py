@@ -20,9 +20,9 @@ class FixedDigitNet(nn.Module):
         )
         self.dmds = [FixedDMDSpatial(input_size, 1, temperature) for _ in range(self.dmd_count)]
 
-    def forward(self, x):
+    def forward(self, x, cold=False):
         # sensed is (B, self.dmd_count)
-        sensed = torch.stack([dmd(x) for dmd in self.dmds], dim=1)
+        sensed = torch.stack([dmd(x, cold) for dmd in self.dmds], dim=1)
         classified = self.simple_mlp(sensed)
         return classified
 
@@ -68,15 +68,15 @@ class AdaptiveDigitNet(nn.Module):
             nn.Softmax(dim=-1)
         )
 
-    def forward(self, x):
+    def forward(self, x, cold=False):
         # TODO: maybe clear up
         # TODO: log the patterns
         hidden_state = None
         for i in range(self.dmd_count):
             if i == 0:
-                sensor_reading = self.first_dmd(x)
+                sensor_reading = self.first_dmd(x, cold=cold)
             else:
-                sensor_reading = self.parameterizable_dmd(x, logits)
+                sensor_reading = self.parameterizable_dmd(x, logits, cold=cold)
             sensor_reading = sensor_reading.view(-1, self.measurement_count)
             encoded_reading = self.sense_encoder(sensor_reading)
             hidden_state = self.memory(encoded_reading, hidden_state)
