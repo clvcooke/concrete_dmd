@@ -18,6 +18,20 @@ class Trainer:
         self.run_name = os.path.basename(wandb.run.path)
         self.optimizer = None
 
+    def train(self):
+        for epoch in range(self.epochs):
+            # train
+            loss, acc = self.run_one_epoch(self.train_loader, epoch, True)
+            # validate
+            val_loss, val_acc = self.run_one_epoch(self.val_loader, epoch, False)
+            # log
+            wandb.log({
+                'train_loss': loss,
+                'train_acc': acc,
+                'val_loss': val_loss,
+                'val_acc': val_acc
+            }, step=epoch + 1)
+
     def run_one_epoch(self, loader, curr_epoch, training=True):
         pbar = tqdm(loader, total=len(loader))
         avg_loss = AverageMeter()
@@ -38,6 +52,47 @@ class Trainer:
         return avg_loss.avg, avg_acc.avg
 
 
+class AnnealingTrainer(Trainer):
+    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
+        super().__init__(network, train_loader, val_loader, epochs, use_gpu)
+        if use_gpu:
+            self.network.cuda()
+            [dmd.cuda() for dmd in self.network.dmds]
+        parameters = list(self.network.parameters())
+        for dmd in self.network.dmds:
+            parameters += list(dmd.parameters())
+        self.optimizer = AdamW(parameters, lr=init_lr)
+
+    def run_one_epoch(self, loader, curr_epoch, training=True):
+        pbar = tqdm(loader, total=len(loader))
+        avg_loss = AverageMeter()
+        avg_acc = AverageMeter()
+        for data, target in pbar:
+            if self.use_gpu:
+                data, target = data.cuda(), target.cuda()
+            output = self.network(data, cold=not training)
+            loss = F.nll_loss(output, target)
+            # lets add a penalty for diverging from 1 or -1
+            divergence_loss = None
+            for dmd in self.network.dmds:
+                dmd_params = torch.abs(dmd.mask)
+                divergence = F.mse_loss(torch.ones_like(dmd_params), dmd_params)
+                if divergence_loss is None:
+                    divergence_loss = divergence
+                else:
+                    divergence_loss += divergence
+            # loss += divergence_loss
+            if training:
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+            acc = torch.sum(output.detach().argmax(dim=1) == target.detach()).float() / len(data)
+            avg_acc.update(acc)
+            avg_loss.update(loss.item())
+            pbar.set_description(f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}')
+        return avg_loss.avg, avg_acc.avg
+
+
 class AdaptiveTrainer(Trainer):
     def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
         super().__init__(network, train_loader, val_loader, epochs, use_gpu)
@@ -46,20 +101,6 @@ class AdaptiveTrainer(Trainer):
             network.first_dmd.cuda()
         parameters = list(self.network.parameters()) + list(self.network.first_dmd.parameters())
         self.optimizer = AdamW(parameters, lr=init_lr)
-
-    def train(self):
-        for epoch in range(self.epochs):
-            # train
-            loss, acc = self.run_one_epoch(self.train_loader, epoch, True)
-            # validate
-            val_loss, val_acc = self.run_one_epoch(self.val_loader, epoch, False)
-            # log
-            wandb.log({
-                'train_loss': loss,
-                'train_acc': acc,
-                'val_loss': val_loss,
-                'val_acc': val_acc
-            }, step=epoch + 1)
 
 
 class FixedTrainer(Trainer):

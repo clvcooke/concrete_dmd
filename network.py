@@ -4,7 +4,7 @@ from dmd import FixedDMDSpatial, ParameterizableDMDSpatial
 
 
 class FixedDigitNet(nn.Module):
-    def __init__(self, input_size=784, dmd_count=1, temperature=1, num_classes=10):
+    def __init__(self, input_size=784, dmd_count=1, temperature=1, num_classes=10, dmd_type=FixedDMDSpatial):
         super(FixedDigitNet, self).__init__()
         self.input_size = input_size
         self.dmd_count = dmd_count
@@ -18,7 +18,7 @@ class FixedDigitNet(nn.Module):
             nn.Linear(64, num_classes),
             nn.Softmax(dim=-1)
         )
-        self.dmds = [FixedDMDSpatial(input_size, 1, temperature) for _ in range(self.dmd_count)]
+        self.dmds = [dmd_type(input_size, 1, temperature) for _ in range(self.dmd_count)]
 
     def forward(self, x, cold=False):
         # sensed is (B, self.dmd_count)
