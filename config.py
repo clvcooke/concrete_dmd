@@ -29,6 +29,8 @@ train_arg.add_argument('--lr_patience', type=int, default=5,
                        help='Number of epochs to wait before reducing lr')
 train_arg.add_argument('--temp', type=float, default=1.0,
                        help="CONCRETE temperature adjustment")
+train_arg.add_argument('--hidden_size', type=int, default=32,
+                       help="hidden size of the networks")
 
 # other params
 misc_arg = add_argument_group('Misc.')
@@ -44,7 +46,6 @@ misc_arg.add_argument('--adaptive', type=str2bool, default=False,
                       help="whether to use an adaptive (recurrent) approach or fixed set of patterns")
 misc_arg.add_argument('--num_patterns', type=int, default=2,
                       help='# of dmd patterns to use')
-
 
 
 def get_config():

@@ -4,18 +4,18 @@ from dmd import FixedDMDSpatial, ParameterizableDMDSpatial
 
 
 class FixedDigitNet(nn.Module):
-    def __init__(self, input_size=784, dmd_count=1, temperature=1, num_classes=10, dmd_type=FixedDMDSpatial):
+    def __init__(self, input_size=784, dmd_count=1, temperature=1, num_classes=10, dmd_type=FixedDMDSpatial, hidden_size=32):
         super(FixedDigitNet, self).__init__()
         self.input_size = input_size
         self.dmd_count = dmd_count
         self.simple_mlp = nn.Sequential(
-            nn.Linear(self.dmd_count, 64),
+            nn.Linear(self.dmd_count, hidden_size),
             nn.ReLU(),
-            nn.Linear(64, 64),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(64, 64),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(64, num_classes),
+            nn.Linear(hidden_size, num_classes),
             nn.Softmax(dim=-1)
         )
         self.dmds = [dmd_type(input_size, 1, temperature) for _ in range(self.dmd_count)]
@@ -28,7 +28,7 @@ class FixedDigitNet(nn.Module):
 
 
 class AdaptiveDigitNet(nn.Module):
-    def __init__(self, input_size=784, dmd_count=1, temperature=1, first_fixed=True, num_classes=10):
+    def __init__(self, input_size=784, dmd_count=1, temperature=1, first_fixed=True, num_classes=10, hidden_size=32):
         super(AdaptiveDigitNet, self).__init__()
         self.input_size = input_size
         self.dmd_count = dmd_count
@@ -40,7 +40,7 @@ class AdaptiveDigitNet(nn.Module):
             raise RuntimeError()
         self.parameterizable_dmd = ParameterizableDMDSpatial(input_size, temperature)
         self.measurement_count = 1
-        encoder_output_size = 32
+        encoder_output_size = hidden_size
         self.sense_encoder = nn.Sequential(
             nn.Linear(self.measurement_count, encoder_output_size),
             nn.ReLU(),
@@ -49,7 +49,7 @@ class AdaptiveDigitNet(nn.Module):
         self.memory = nn.GRUCell(encoder_output_size, encoder_output_size)
 
         # from memory to next patttern
-        pattern_generator_size = 32
+        pattern_generator_size = hidden_size
         self.pattern_generator = nn.Sequential(
             nn.Linear(encoder_output_size, pattern_generator_size),
             nn.ReLU(),
@@ -58,7 +58,7 @@ class AdaptiveDigitNet(nn.Module):
             nn.Linear(pattern_generator_size, input_size)
         )
 
-        classifier_hidden_size = 32
+        classifier_hidden_size = hidden_size
         self.classifier = nn.Sequential(
             nn.Linear(encoder_output_size, classifier_hidden_size),
             nn.ReLU(),

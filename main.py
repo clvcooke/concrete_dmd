@@ -8,6 +8,8 @@ import torch
 
 wandb.init("cdmd")
 
+VERSION = 2
+
 
 def main(config):
     torch.manual_seed(config.random_seed)
@@ -22,9 +24,12 @@ def main(config):
     else:
         network_cls = FixedDigitNet
         trainer_cls = FixedTrainer
-    network = network_cls(dmd_count=config.num_patterns, temperature=config.temp)
+    network = network_cls(dmd_count=config.num_patterns, temperature=config.temp, hidden_size=config.hidden_size)
     trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs)
     wandb.config.update(config)
+    wandb.config.update({
+        "version": VERSION
+    })
     trainer.train()
 
 
