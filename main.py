@@ -8,7 +8,7 @@ import torch
 
 wandb.init("cdmd")
 
-VERSION = 2
+VERSION = 3
 
 
 def main(config):

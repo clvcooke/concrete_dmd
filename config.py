@@ -40,7 +40,7 @@ misc_arg.add_argument('--random_seed', type=int, default=1,
                       help='Seed to ensure reproducibility')
 misc_arg.add_argument('--task', type=str, default='mnist',
                       help='Task to train on')
-misc_arg.add_argument('--init_strategy', type=str, default=None,
+misc_arg.add_argument('--init_strategy', type=str, default="flat",
                       help='initialization strategy for dmds')
 misc_arg.add_argument('--adaptive', type=str2bool, default=False,
                       help="whether to use an adaptive (recurrent) approach or fixed set of patterns")

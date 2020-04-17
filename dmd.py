@@ -4,15 +4,22 @@ from torch.distributions.relaxed_bernoulli import RelaxedBernoulli
 
 
 class FixedDMDSpatial(nn.Module):
-    def __init__(self, input_size=784, output_size=1, temperature=1):
+    def __init__(self, input_size=784, output_size=1, temperature=1, init_strategy='flat'):
         super(FixedDMDSpatial, self).__init__()
         assert output_size == 1
         assert temperature > 0
         self.input_size = input_size
         self.output_size = output_size
         # binary mask
-        self.logits = nn.Parameter(
-            torch.ones((self.input_size), dtype=torch.float, requires_grad=True) / (self.input_size))
+        if init_strategy == 'flat':
+            logit_values = torch.ones(self.input_size, dtype=torch.float, requires_grad=True) / self.input_size
+        elif init_strategy == 'uniform':
+            logit_values = torch.rand(self.input_size, dtype=torch.float, requires_grad=True)
+        elif init_strategy == 'normal':
+            logit_values = torch.randn(self.input_size, dtype=torch.float, requires_grad=True)
+        else:
+            logit_values = None
+        self.logits = nn.Parameter(logit_values)
         self.temperature = temperature
         self.sense_scale = nn.Parameter(
             torch.ones(self.output_size, dtype=torch.float, requires_grad=True) / self.input_size)
