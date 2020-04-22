@@ -46,6 +46,8 @@ misc_arg.add_argument('--adaptive', type=str2bool, default=False,
                       help="whether to use an adaptive (recurrent) approach or fixed set of patterns")
 misc_arg.add_argument('--num_patterns', type=int, default=2,
                       help='# of dmd patterns to use')
+misc_arg.add_argument('--adaptive_multi', type=int, default=1,
+                      help='# of DMD patterns to use at a time for adaptive approaches')
 
 
 def get_config():

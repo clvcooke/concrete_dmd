@@ -6,8 +6,15 @@ import numpy as np
 
 def load_train_data(dataset_name, batch_size, val_split=0.9, dataset_seed=0):
     if dataset_name.lower() == "mnist":
-        dataset = datasets.MNIST('./data', train=True, download=True,
+        dataset = datasets.MNIST('./data/mnist', train=True, download=True,
                                  transform=transforms.Compose([
+                                     transforms.ToTensor()
+                                 ]))
+    elif dataset_name.lower() == 'stl':
+        dataset = datasets.STL10('./data/stl10', split='unlabeled', download=True,
+                                 transform=transforms.Compose([
+                                     transforms.Grayscale(),
+                                     transforms.Resize((32,32)),
                                      transforms.ToTensor()
                                  ]))
     else:

@@ -1,14 +1,14 @@
 import wandb
 import dataloader
-from network import FixedDigitNet, AdaptiveDigitNet
-from trainer import FixedTrainer, AdaptiveTrainer, AnnealingTrainer
-from dmd import ContinuousDMD
+from network import FixedDigitNet, AdaptiveDigitNet, ReconNet
+from trainer import FixedClassificationTrainer, AdaptiveClassificationTrainer, AnnealingClassificationTrainer, \
+    ReconTrainer
 from config import get_config
 import torch
 
 wandb.init("cdmd")
 
-VERSION = 3
+VERSION = 5
 
 
 def main(config):
@@ -17,26 +17,33 @@ def main(config):
     if config.use_gpu:
         torch.cuda.manual_seed(config.random_seed)
     train_loader, val_loader = dataloader.load_train_data(config.task, batch_size=config.batch_size)
-    adaptive = config.adaptive
-    if adaptive:
-        network_cls = AdaptiveDigitNet
-        trainer_cls = AdaptiveTrainer
+    if config.task.lower() == 'mnist':
+        adaptive = config.adaptive
+        if adaptive:
+            network_cls = AdaptiveDigitNet
+            trainer_cls = AdaptiveClassificationTrainer
+        else:
+            network_cls = FixedDigitNet
+            trainer_cls = FixedClassificationTrainer
+    elif config.task.lower() == 'stl':
+        adaptive = config.adaptive
+        if adaptive:
+            raise RuntimeError()
+        else:
+            network_cls = ReconNet
+            trainer_cls = ReconTrainer
     else:
-        network_cls = FixedDigitNet
-        trainer_cls = FixedTrainer
-    network = network_cls(dmd_count=config.num_patterns, temperature=config.temp, hidden_size=config.hidden_size)
-    trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs)
+        raise RuntimeError()
+
+    network = network_cls(dmd_count=config.num_patterns, temperature=config.temp, hidden_size=config.hidden_size,
+                          adaptive_multi=config.adaptive_multi)
+    trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs, use_gpu=config.use_gpu)
     wandb.config.update(config)
     wandb.config.update({
         "version": VERSION
     })
     trainer.train()
 
-
-# if continuou:
-#     network = FixedDigitNet(dmd_count=2, temperature=1.5, dmd_type=ContinuousDMD)
-#     trainer = AnnealingTrainer(network, train_loader, val_loader, init_lr=1e-3)
-# else:
 
 if __name__ == "__main__":
     conf, unparsed = get_config()

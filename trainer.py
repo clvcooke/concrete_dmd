@@ -1,4 +1,5 @@
 from torch.optim.adamw import AdamW
+import skimage.measure as measure
 from tqdm import tqdm
 from utils import AverageMeter
 import torch.nn.functional as F
@@ -6,62 +7,85 @@ import numpy as np
 import torch
 import wandb
 import os
+import kornia
 
 
 class Trainer:
-    def __init__(self, network, train_loader, val_loader, epochs, use_gpu):
+    def __init__(self, network, train_loader, val_loader, epochs, use_gpu, criterion, init_lr):
         self.use_gpu = use_gpu
         self.epochs = epochs
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.network = network
         self.run_name = os.path.basename(wandb.run.path)
-        self.optimizer = None
+        self.criterion = criterion
+        self.classification = criterion == F.nll_loss
+        if use_gpu:
+            self.network.cuda()
+        self.optimizer = AdamW(self.network.parameters(), lr=init_lr)
 
     def train(self):
         for epoch in range(self.epochs):
             # train
-            loss, acc = self.run_one_epoch(self.train_loader, epoch, True)
+            metrics = self.run_one_epoch(self.train_loader, epoch, True)
             # validate
-            val_loss, val_acc = self.run_one_epoch(self.val_loader, epoch, False)
-            # log
-            wandb.log({
-                'train_loss': loss,
-                'train_acc': acc,
-                'val_loss': val_loss,
-                'val_acc': val_acc
-            }, step=epoch + 1)
+            metrics.update(self.run_one_epoch(self.val_loader, epoch, False))
+            wandb.log(metrics, step=epoch + 1)
 
     def run_one_epoch(self, loader, curr_epoch, training=True):
         pbar = tqdm(loader, total=len(loader))
         avg_loss = AverageMeter()
         avg_acc = AverageMeter()
+        avg_ssim = AverageMeter()
         for data, target in pbar:
             if self.use_gpu:
                 data, target = data.cuda(), target.cuda()
             output = self.network(data, cold=not training)
-            loss = F.nll_loss(output, target)
+            if self.classification:
+                loss = self.criterion(output, target)
+            else:
+                loss = self.criterion(output, data)
             if training:
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-            acc = torch.sum(output.detach().argmax(dim=1) == target.detach()).float() / len(data)
-            avg_acc.update(acc)
             avg_loss.update(loss.item())
-            pbar.set_description(f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}')
-        return avg_loss.avg, avg_acc.avg
+            if self.classification:
+                acc = torch.sum(output.detach().argmax(dim=1) == target.detach()).float() / len(data)
+                avg_acc.update(acc)
+                desc = f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}'
+            else:
+                ssim = 1- kornia.losses.ssim(data, output, 11, reduction='mean').item()
+                # ssim = measure.compare_ssim(data.cpu(), output.cpu())
+                avg_ssim.update(ssim)
+                desc = f'Epoch {curr_epoch}  - ssim: {avg_ssim.avg:.4f} - loss {avg_loss.avg:.4f}'
+            pbar.set_description(desc)
+        return self.create_metrics(training, avg_loss.avg, avg_acc.avg, avg_ssim.avg, self.classification)
+
+    @staticmethod
+    def create_metrics(training, loss, acc=None, ssim=None, classification=True):
+        metric_type = 'train' if training else 'val'
+        if classification:
+            metrics = {
+                f"{metric_type}_loss": loss,
+                f"{metric_type}_acc": acc
+            }
+        else:
+            metrics = {
+                f"{metric_type}_loss": loss,
+                f"{metric_type}_ssim": ssim
+            }
+        return metrics
 
 
-class AnnealingTrainer(Trainer):
-    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
-        super().__init__(network, train_loader, val_loader, epochs, use_gpu)
-        if use_gpu:
-            self.network.cuda()
-            [dmd.cuda() for dmd in self.network.dmds]
-        parameters = list(self.network.parameters())
-        for dmd in self.network.dmds:
-            parameters += list(dmd.parameters())
-        self.optimizer = AdamW(parameters, lr=init_lr)
+class ReconTrainer(Trainer):
+    def __init__(self, network, train_loader, val_loader, epochs, use_gpu, init_lr):
+        super().__init__(network, train_loader, val_loader, epochs, use_gpu, criterion=F.l1_loss, init_lr=init_lr)
+
+
+class AnnealingClassificationTrainer(Trainer):
+    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True, criterion=F.nll_loss):
+        super().__init__(network, train_loader, val_loader, epochs, use_gpu, criterion, init_lr=init_lr)
 
     def run_one_epoch(self, loader, curr_epoch, training=True):
         pbar = tqdm(loader, total=len(loader))
@@ -93,41 +117,24 @@ class AnnealingTrainer(Trainer):
         return avg_loss.avg, avg_acc.avg
 
 
-class AdaptiveTrainer(Trainer):
-    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
-        super().__init__(network, train_loader, val_loader, epochs, use_gpu)
-        if use_gpu:
-            network.cuda()
-            network.first_dmd.cuda()
-        parameters = list(self.network.parameters()) + list(self.network.first_dmd.parameters())
-        self.optimizer = AdamW(parameters, lr=init_lr)
+class AdaptiveClassificationTrainer(Trainer):
+    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True, criterion=F.nll_loss):
+        super().__init__(network, train_loader, val_loader, epochs, use_gpu, criterion, init_lr=init_lr)
 
 
-class FixedTrainer(Trainer):
-    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True):
-        super().__init__(network, train_loader, val_loader, epochs, use_gpu)
-        if use_gpu:
-            self.network.cuda()
-            [dmd.cuda() for dmd in self.network.dmds]
-        parameters = list(self.network.parameters())
-        for dmd in self.network.dmds:
-            parameters += list(dmd.parameters())
-        self.optimizer = AdamW(parameters, lr=init_lr)
+class FixedClassificationTrainer(Trainer):
+    def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True, criterion=F.nll_loss):
+        super().__init__(network, train_loader, val_loader, epochs, use_gpu, criterion, init_lr=init_lr)
 
     def train(self):
         self.record_logits(0)
         for epoch in range(self.epochs):
             # train
-            loss, acc = self.run_one_epoch(self.train_loader, epoch, True)
+            metrics = self.run_one_epoch(self.train_loader, epoch, True)
             # validate
-            val_loss, val_acc = self.run_one_epoch(self.val_loader, epoch, False)
+            metrics.update(self.run_one_epoch(self.val_loader, epoch, False))
             # log
-            wandb.log({
-                'train_loss': loss,
-                'train_acc': acc,
-                'val_loss': val_loss,
-                'val_acc': val_acc
-            }, step=epoch + 1)
+            wandb.log(metrics, step=epoch + 1)
             self.record_logits(epoch + 1)
 
     def record_logits(self, step, directory='./'):
@@ -135,6 +142,7 @@ class FixedTrainer(Trainer):
         This function will log the logits of the current DMDs to wandb and disk
         :return:
         """
+        # TODO: fix me
         logits = [dmd.logits.cpu().detach() for dmd in self.network.dmds]
         save_dir = os.path.join(directory, 'logits', self.run_name, f'epoch_{step}')
         os.makedirs(save_dir, exist_ok=True)
