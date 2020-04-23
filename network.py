@@ -107,7 +107,7 @@ class ReconNet(nn.Module):
         )
 
         self.conv_decoder = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=5, padding=2),
+            nn.Conv2d(1, 64, kernel_size=9, padding=4),
             nn.ReLU(),
             nn.Conv2d(64, 32, kernel_size=1),
             nn.ReLU(),

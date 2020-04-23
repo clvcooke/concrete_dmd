@@ -18,6 +18,8 @@ def add_argument_group(name):
 data_arg = add_argument_group('Data Params')
 data_arg.add_argument('--batch_size', type=int, default=256,
                       help='# of images in each batch of data')
+data_arg.add_argument('--resolution', type=int, default=32,
+                      help='resolution of reconstruction')
 
 # training params
 train_arg = add_argument_group('Training Params')

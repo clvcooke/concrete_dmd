@@ -1,5 +1,5 @@
 from torch.optim.adam import Adam
-import skimage.measure as measure
+from torch.optim.sgd import SGD
 from tqdm import tqdm
 from utils import AverageMeter
 import torch.nn.functional as F
@@ -22,7 +22,9 @@ class Trainer:
         self.classification = criterion == F.nll_loss
         if use_gpu:
             self.network.cuda()
-        self.optimizer = Adam(self.network.parameters(), lr=init_lr)
+        parameters = list(self.network.parameters()) + list(self.network.dmds.parameters())
+        self.optimizer = Adam(parameters, lr=init_lr)
+        # self.optimizer = SGD(parameters, lr=init_lr)
 
     def train(self):
         for epoch in range(self.epochs):
