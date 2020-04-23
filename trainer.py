@@ -1,4 +1,4 @@
-from torch.optim.adamw import AdamW
+from torch.optim.adam import Adam
 import skimage.measure as measure
 from tqdm import tqdm
 from utils import AverageMeter
@@ -22,7 +22,7 @@ class Trainer:
         self.classification = criterion == F.nll_loss
         if use_gpu:
             self.network.cuda()
-        self.optimizer = AdamW(self.network.parameters(), lr=init_lr)
+        self.optimizer = Adam(self.network.parameters(), lr=init_lr)
 
     def train(self):
         for epoch in range(self.epochs):

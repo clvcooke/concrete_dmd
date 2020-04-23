@@ -36,7 +36,7 @@ def main(config):
         raise RuntimeError()
 
     network = network_cls(dmd_count=config.num_patterns, temperature=config.temp, hidden_size=config.hidden_size,
-                          adaptive_multi=config.adaptive_multi)
+                          adaptive_multi=config.adaptive_multi, init_strategy=config.init_strategy)
     trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs, use_gpu=config.use_gpu)
     wandb.config.update(config)
     wandb.config.update({
