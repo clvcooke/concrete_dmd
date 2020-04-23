@@ -27,11 +27,13 @@ class Trainer:
         # self.optimizer = SGD(parameters, lr=init_lr)
 
     def train(self):
+        self.record_logits(0)
         for epoch in range(self.epochs):
             # train
             metrics = self.run_one_epoch(self.train_loader, epoch, True)
             # validate
             metrics.update(self.run_one_epoch(self.val_loader, epoch, False))
+            self.record_logits(epoch + 1)
             wandb.log(metrics, step=epoch + 1)
 
     def run_one_epoch(self, loader, curr_epoch, training=True):
@@ -78,6 +80,25 @@ class Trainer:
                 f"{metric_type}_ssim": ssim
             }
         return metrics
+
+    def record_logits(self, step, directory='./'):
+        """
+        This function will log the logits of the current DMDs to wandb and disk
+        :return:
+        """
+        logits = self.network.dmds.logits.cpu().detach()
+        save_dir = os.path.join(directory, 'logits', self.run_name, f'epoch_{step}')
+        os.makedirs(save_dir, exist_ok=True)
+        for i in range(logits.shape[1]):
+            np.save(os.path.join(save_dir, f'pattern_{i}.npy'), logits[:,i])
+        # save the logits to disk based on the wandb run id
+        # TODO: change shape to be a variable
+        odds = torch.exp(logits)
+        dmd_probs = odds/(1 + odds)
+        images = [wandb.Image(dmd_probs[:,i].reshape(-1, int(np.sqrt(self.network.input_size))) * 255, caption=f"DMD {i + 1}") for i in range(min(16, dmd_probs.shape[1]))]
+        wandb.log({
+            'sampling_probs': images
+        }, step=step, commit=False)
 
 
 class ReconTrainer(Trainer):
@@ -139,21 +160,4 @@ class FixedClassificationTrainer(Trainer):
             wandb.log(metrics, step=epoch + 1)
             self.record_logits(epoch + 1)
 
-    def record_logits(self, step, directory='./'):
-        """
-        This function will log the logits of the current DMDs to wandb and disk
-        :return:
-        """
-        # TODO: fix me
-        logits = [dmd.logits.cpu().detach() for dmd in self.network.dmds]
-        save_dir = os.path.join(directory, 'logits', self.run_name, f'epoch_{step}')
-        os.makedirs(save_dir, exist_ok=True)
-        for i, logit in enumerate(logits):
-            np.save(os.path.join(save_dir, f'pattern_{i}.npy'), logit)
-        # save the logits to disk based on the wandb run id
-        # TODO: change shape to be a variable
-        dmd_probs = [F.softmax(logit, dim=-1).reshape(28, 28) for logit in logits]
-        images = [wandb.Image(probs * 255, caption=f"DMD {i + 1}") for i, probs in enumerate(dmd_probs)]
-        wandb.log({
-            'logits': images
-        }, step=step)
+

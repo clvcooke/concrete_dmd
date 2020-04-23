@@ -4,7 +4,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 
 
-def load_train_data(dataset_name, batch_size, val_split=0.9, dataset_seed=0):
+def load_train_data(dataset_name, batch_size, val_split=0.9, dataset_seed=0, resolution=32):
     if dataset_name.lower() == "mnist":
         dataset = datasets.MNIST('./data/mnist', train=True, download=True,
                                  transform=transforms.Compose([
@@ -14,7 +14,7 @@ def load_train_data(dataset_name, batch_size, val_split=0.9, dataset_seed=0):
         dataset = datasets.STL10('./data/stl10', split='unlabeled', download=True,
                                  transform=transforms.Compose([
                                      transforms.Grayscale(),
-                                     transforms.Resize((32,32)),
+                                     transforms.Resize((resolution,resolution)),
                                      transforms.ToTensor()
                                  ]))
     else:

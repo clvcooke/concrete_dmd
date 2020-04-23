@@ -95,15 +95,15 @@ class ReconNet(nn.Module):
     def __init__(self, dmd_count=10, resolution=32, init_strategy='flat', temperature=1, **kwargs):
         super().__init__()
         self.resolution = resolution
-
+        self.input_size = resolution**2
         self.dmds = FixedDMDSpatial(resolution * resolution, temperature=temperature, output_size=dmd_count,
                                     init_strategy=init_strategy)
 
         self.signal_remapper = nn.Sequential(
-            nn.BatchNorm1d(dmd_count),
+            # nn.BatchNorm1d(dmd_count, track_running_stats=False),
             nn.Linear(dmd_count, resolution * resolution),
-            nn.ReLU(),
-            nn.BatchNorm1d(resolution*resolution)
+            # nn.ReLU(),
+            # nn.BatchNorm1d(resolution*resolution, track_running_stats=False)
         )
 
         self.conv_decoder = nn.Sequential(

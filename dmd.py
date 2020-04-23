@@ -16,7 +16,7 @@ class FixedDMDSpatial(nn.Module):
         elif init_strategy == 'uniform':
             logit_values = torch.rand(logit_shape, dtype=torch.float, requires_grad=True)
         elif init_strategy == 'normal':
-            logit_values = torch.randn(logit_shape, dtype=torch.float, requires_grad=True)
+            logit_values = torch.randn(logit_shape, dtype=torch.float, requires_grad=True)*0.2
         else:
             logit_values = None
         self.logits = nn.Parameter(logit_values)
