@@ -1,4 +1,4 @@
-from torch.optim.adam import Adam
+from torch.optim.adamw import AdamW
 from torch.optim.sgd import SGD
 from tqdm import tqdm
 from utils import AverageMeter
@@ -23,7 +23,7 @@ class Trainer:
         if use_gpu:
             self.network.cuda()
         parameters = list(self.network.parameters()) + list(self.network.dmds.parameters())
-        self.optimizer = Adam(parameters, lr=init_lr)
+        self.optimizer = AdamW(parameters, lr=init_lr)
         # self.optimizer = SGD(parameters, lr=init_lr)
 
     def train(self):
