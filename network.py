@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from dmd import FixedDMDSpatial, ParameterizableDMDSpatial
-from torchvision.models import segmentation
 
 
 class FixedDigitNet(nn.Module):
