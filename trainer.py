@@ -64,6 +64,8 @@ class Trainer:
                 avg_ssim.update(ssim)
                 desc = f'Epoch {curr_epoch}  - ssim: {avg_ssim.avg:.4f} - loss {avg_loss.avg:.4f}'
             pbar.set_description(desc)
+        if not training and not self.classification:
+            self.record_images(curr_epoch, output, data)
         return self.create_metrics(training, avg_loss.avg, avg_acc.avg, avg_ssim.avg, self.classification)
 
     @staticmethod
@@ -95,11 +97,22 @@ class Trainer:
         # TODO: change shape to be a variable
         odds = torch.exp(logits)
         dmd_probs = odds/(1 + odds)
-        images = [wandb.Image(dmd_probs[:,i].reshape(-1, int(np.sqrt(self.network.input_size))) * 255, caption=f"DMD {i + 1}") for i in range(min(16, dmd_probs.shape[1]))]
+        images = [wandb.Image(dmd_probs[:,i].reshape(-1, int(np.sqrt(self.network.input_size))) * 255, caption=f"DMD {i + 1}") for i in range(min(4, dmd_probs.shape[1]))]
         wandb.log({
             'sampling_probs': images
         }, step=step, commit=False)
 
+    @staticmethod
+    def record_images(step, output, target):
+        # take the first 4 always
+        images = [wandb.Image(output[i,0,:,:]*255, caption=f"Val Image {i+1}") for i in range(4)]
+        targets = [wandb.Image(target[i,0,:,:]*255, caption=f"Val Image {i+1}") for i in range(4)]
+        wandb.log(
+            {
+                'val_predictions': images,
+                'val_targets': targets
+            }, step=step, commit=False
+        )
 
 class ReconTrainer(Trainer):
     def __init__(self, network, train_loader, val_loader, epochs, use_gpu, init_lr):
