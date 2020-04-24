@@ -1,6 +1,6 @@
 import wandb
 import dataloader
-from network import FixedDigitNet, AdaptiveDigitNet, ReconNet
+from network import FixedDigitNet, AdaptiveDigitNet, ReconNetV2
 from trainer import FixedClassificationTrainer, AdaptiveClassificationTrainer, AnnealingClassificationTrainer, \
     ReconTrainer
 from config import get_config
@@ -8,7 +8,7 @@ import torch
 
 wandb.init("cdmd")
 
-VERSION = 6
+VERSION = 7
 
 
 def main(config):
@@ -31,7 +31,7 @@ def main(config):
         if adaptive:
             raise RuntimeError()
         else:
-            network_cls = ReconNet
+            network_cls = ReconNetV2
             trainer_cls = ReconTrainer
     else:
         raise RuntimeError()

@@ -33,7 +33,7 @@ class FixedDMDSpatial(nn.Module):
         logits_expanded = self.logits.expand((batch_size, self.input_size, self.output_size))
         sensed = self.dmd(x, logits_expanded, cold=cold)
         # readout noise std
-        noise_scale = self.noise*sensed
+        noise_scale = self.noise*torch.sqrt(sensed)
         sensed += torch.randn_like(sensed)*noise_scale
         # now scale and bias
         sensed_scaled = sensed * self.sense_scale

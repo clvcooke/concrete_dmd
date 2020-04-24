@@ -91,11 +91,47 @@ class AdaptiveDigitNet(nn.Module):
         return classification
 
 
+class ReconNetV2(nn.Module):
+    def __init__(self, dmd_count=10, resolution=32, init_strategy='flat', temperature=1, noise=0.0, **kwargs):
+        super().__init__()
+        self.resolution = resolution
+        self.input_size = resolution ** 2
+        self.dmds = FixedDMDSpatial(resolution * resolution, temperature=temperature, output_size=dmd_count,
+                                    init_strategy=init_strategy, noise=noise)
+
+        self.signal_projection = resolution
+        self.signal_remapper = nn.Sequential(
+            nn.BatchNorm1d(dmd_count, track_running_stats=False),
+            nn.Linear(dmd_count, self.signal_projection * self.signal_projection),
+            nn.ReLU(),
+            nn.BatchNorm1d(self.signal_projection * self.signal_projection, track_running_stats=False)
+        )
+
+        self.conv_decoder = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(8, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 1, kernel_size=1, padding=0),
+            nn.ReLU()
+        )
+
+    def forward(self, x, cold=False):
+        signal_map = self.dmds(x, cold)
+        feature_map = self.signal_remapper(signal_map).view(-1, 1, self.resolution, self.resolution)
+        output = self.conv_decoder(feature_map)
+        return output
+
+
 class ReconNet(nn.Module):
     def __init__(self, dmd_count=10, resolution=32, init_strategy='flat', temperature=1, noise=0.0, **kwargs):
         super().__init__()
         self.resolution = resolution
-        self.input_size = resolution**2
+        self.input_size = resolution ** 2
         self.dmds = FixedDMDSpatial(resolution * resolution, temperature=temperature, output_size=dmd_count,
                                     init_strategy=init_strategy, noise=noise)
 
@@ -103,7 +139,7 @@ class ReconNet(nn.Module):
             nn.BatchNorm1d(dmd_count, track_running_stats=False),
             nn.Linear(dmd_count, resolution * resolution),
             # nn.ReLU(),
-            nn.BatchNorm1d(resolution*resolution, track_running_stats=False)
+            nn.BatchNorm1d(resolution * resolution, track_running_stats=False)
         )
 
         self.conv_decoder = nn.Sequential(
