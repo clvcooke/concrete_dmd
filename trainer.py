@@ -22,9 +22,8 @@ class Trainer:
         self.classification = criterion == F.nll_loss
         if use_gpu:
             self.network.cuda()
-        parameters = list(self.network.parameters()) + list(self.network.dmds.parameters())
-        self.optimizer = AdamW(parameters, lr=init_lr)
-        # self.optimizer = SGD(parameters, lr=init_lr)
+        self.dmd_optim = AdamW(self.network.dmds.parameters(), lr=init_lr)
+        self.optimizer = AdamW(self.network.parameters(), lr=init_lr)
 
     def train(self):
         self.record_logits(0)
@@ -44,15 +43,18 @@ class Trainer:
         for data, target in pbar:
             if self.use_gpu:
                 data, target = data.cuda(), target.cuda()
-            output = self.network(data, cold=not training)
+            # output = self.network(data, cold=not training)
+            output = self.network(data)
             if self.classification:
                 loss = self.criterion(output, target)
             else:
                 loss = self.criterion(output, data)
             if training:
                 self.optimizer.zero_grad()
+                self.dmd_optim.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+                self.dmd_optim.step()
             avg_loss.update(loss.item())
             if self.classification:
                 acc = torch.sum(output.detach().argmax(dim=1) == target.detach()).float() / len(data)
