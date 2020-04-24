@@ -50,6 +50,8 @@ misc_arg.add_argument('--num_patterns', type=int, default=2,
                       help='# of dmd patterns to use')
 misc_arg.add_argument('--adaptive_multi', type=int, default=1,
                       help='# of DMD patterns to use at a time for adaptive approaches')
+misc_arg.add_argument('--noise', type=float, default=0.0,
+                      help='sensor readout noise (absolute gaussian)')
 
 
 def get_config():

@@ -92,12 +92,12 @@ class AdaptiveDigitNet(nn.Module):
 
 
 class ReconNet(nn.Module):
-    def __init__(self, dmd_count=10, resolution=32, init_strategy='flat', temperature=1, **kwargs):
+    def __init__(self, dmd_count=10, resolution=32, init_strategy='flat', temperature=1, noise=0.0, **kwargs):
         super().__init__()
         self.resolution = resolution
         self.input_size = resolution**2
         self.dmds = FixedDMDSpatial(resolution * resolution, temperature=temperature, output_size=dmd_count,
-                                    init_strategy=init_strategy)
+                                    init_strategy=init_strategy, noise=noise)
 
         self.signal_remapper = nn.Sequential(
             nn.BatchNorm1d(dmd_count, track_running_stats=False),

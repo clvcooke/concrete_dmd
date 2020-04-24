@@ -4,11 +4,12 @@ from torch.distributions.relaxed_bernoulli import RelaxedBernoulli
 
 
 class FixedDMDSpatial(nn.Module):
-    def __init__(self, input_size=784, output_size=1, temperature=1, init_strategy='flat'):
+    def __init__(self, input_size=784, output_size=1, temperature=1, init_strategy='flat', noise=0.0):
         super(FixedDMDSpatial, self).__init__()
         assert temperature > 0
         self.input_size = input_size
         self.output_size = output_size
+        self.noise = noise
         # binary mask
         logit_shape = (self.input_size, self.output_size)
         if init_strategy == 'flat':
@@ -31,6 +32,9 @@ class FixedDMDSpatial(nn.Module):
         batch_size = x.shape[0]
         logits_expanded = self.logits.expand((batch_size, self.input_size, self.output_size))
         sensed = self.dmd(x, logits_expanded, cold=cold)
+        # readout noise std
+        noise_scale = self.noise*sensed
+        sensed += torch.randn_like(sensed)*noise_scale
         # now scale and bias
         sensed_scaled = sensed * self.sense_scale
         sensed_biased = sensed_scaled + self.sense_bias
@@ -58,7 +62,10 @@ class ParameterizableDMDSpatial(nn.Module):
         else:
             temperature = self.temperature
         dist = RelaxedBernoulli(temperature=temperature, logits=logits)
-        samples = dist.rsample()
+        if cold:
+            samples = dist.sample()
+        else:
+            samples = dist.rsample()
         # now "mask" the pixels of the input spatially by elementwise multiply, we throw away the second value
         masked_x = samples * x_local
         # get sensor values, shape of (B)

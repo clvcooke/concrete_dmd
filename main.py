@@ -8,7 +8,7 @@ import torch
 
 wandb.init("cdmd")
 
-VERSION = 5
+VERSION = 6
 
 
 def main(config):
@@ -16,7 +16,8 @@ def main(config):
     torch.set_num_threads(1)
     if config.use_gpu:
         torch.cuda.manual_seed(config.random_seed)
-    train_loader, val_loader = dataloader.load_train_data(config.task, batch_size=config.batch_size, resolution=config.resolution)
+    train_loader, val_loader = dataloader.load_train_data(config.task, batch_size=config.batch_size,
+                                                          resolution=config.resolution)
     if config.task.lower() == 'mnist':
         adaptive = config.adaptive
         if adaptive:
@@ -36,8 +37,10 @@ def main(config):
         raise RuntimeError()
 
     network = network_cls(dmd_count=config.num_patterns, temperature=config.temp, hidden_size=config.hidden_size,
-                          adaptive_multi=config.adaptive_multi, init_strategy=config.init_strategy, resolution=config.resolution)
-    trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs, use_gpu=config.use_gpu)
+                          adaptive_multi=config.adaptive_multi, init_strategy=config.init_strategy,
+                          resolution=config.resolution, noise=config.noise)
+    trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs,
+                          use_gpu=config.use_gpu)
     wandb.config.update(config)
     wandb.config.update({
         "version": VERSION
