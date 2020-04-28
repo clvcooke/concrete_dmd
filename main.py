@@ -4,6 +4,7 @@ from network import FixedDigitNet, AdaptiveDigitNet, ReconNetV2
 from trainer import FixedClassificationTrainer, AdaptiveClassificationTrainer, AnnealingClassificationTrainer, \
     ReconTrainer
 from config import get_config
+from dmd import FixedDMDAperture, FixedDMDSpatial
 import torch
 
 wandb.init("cdmd")
@@ -29,16 +30,23 @@ def main(config):
     elif config.task.lower() == 'stl':
         adaptive = config.adaptive
         if adaptive:
-            raise RuntimeError()
+            raise RuntimeError("Adaptive reconstruction is not supported")
         else:
             network_cls = ReconNetV2
             trainer_cls = ReconTrainer
     else:
-        raise RuntimeError()
+        raise RuntimeError("Task name is invalid")
+
+    if config.dmd_type.lower() == 'spatial':
+        dmd_type = FixedDMDSpatial
+    elif config.dmd_type.lower() == 'frequency':
+        dmd_type = FixedDMDAperture
+    else:
+        raise RuntimeError("DMD type is invalid")
 
     network = network_cls(dmd_count=config.num_patterns, temperature=config.temp, hidden_size=config.hidden_size,
                           adaptive_multi=config.adaptive_multi, init_strategy=config.init_strategy,
-                          resolution=config.resolution, noise=config.noise)
+                          resolution=config.resolution, noise=config.noise, dmd_type=dmd_type)
     trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs,
                           use_gpu=config.use_gpu)
     wandb.config.update(config)

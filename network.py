@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from dmd import FixedDMDSpatial, ParameterizableDMDSpatial
-
+import numpy as np
 
 class FixedDigitNet(nn.Module):
     def __init__(self, input_size=784, dmd_count=1, temperature=1, num_classes=10, dmd_type=FixedDMDSpatial,
@@ -9,22 +9,37 @@ class FixedDigitNet(nn.Module):
         super(FixedDigitNet, self).__init__()
         self.input_size = input_size
         self.dmd_count = dmd_count
+        self.resolution = int(np.sqrt(self.input_size))
+        self.signal_map = nn.Sequential(
+            nn.BatchNorm1d(self.dmd_count),
+            nn.Linear(self.dmd_count, self.input_size),
+            nn.ReLU()
+        )
+        self.simple_cnn = nn.Sequential(
+            nn.Conv2d(1, 32, 5),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, 5),
+            nn.ReLU(),
+            nn.MaxPool2d(3, 3)
+        )
+
         self.simple_mlp = nn.Sequential(
-            nn.Linear(self.dmd_count, hidden_size),
+            nn.Linear(256, 150),
             nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, num_classes),
+            nn.Linear(150, 10),
+            # nn.ReLU(),
             nn.Softmax(dim=-1)
         )
+
         self.dmds = dmd_type(input_size, dmd_count, temperature, init_strategy)
 
     def forward(self, x, cold=False):
         # sensed is (B, self.trajectory_length)
-        sensed = torch.stack([dmd(x, cold) for dmd in self.dmds], dim=1)
-        classified = self.simple_mlp(sensed)
+        sensed = self.dmds(x, cold)
+        remapped = self.signal_map(sensed)
+        conved = self.simple_cnn(remapped.view(-1, 1, self.resolution, self.resolution))
+        classified = self.simple_mlp(conved.view(-1, 256))
         return classified
 
 
@@ -130,28 +145,40 @@ class ReconNetV2(nn.Module):
         # )
         k_size = 2
         padding = 0
+        self.reg =  nn.BatchNorm1d(self.dmd_count)
+
         self.conv_decoder = nn.Sequential(
-            nn.ConvTranspose2d(self.dmd_count, 64, k_size, 2, padding=padding),
+            nn.ConvTranspose2d(self.dmd_count, 256, k_size, 2, padding=padding),
+            nn.ReLU(),
+            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(256, 256, k_size, 2, padding=padding),
+            nn.ReLU(),
+            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(256, 256, k_size, 2, padding=padding),
+            nn.ReLU(),
+            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(256, 256, k_size, 2, padding=padding),
+            nn.ReLU(),
+            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(256, 256, k_size, 2, padding=padding),
+            nn.ReLU(),
+            nn.BatchNorm2d(256),
+            nn.Conv2d(256, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.BatchNorm2d(128),
+            nn.Conv2d(128, 64, 3, padding=1),
             nn.ReLU(),
             nn.BatchNorm2d(64),
-            nn.ConvTranspose2d(64, 64, k_size, 2, padding=padding),
+            nn.Conv2d(64, 32, 3, padding=1),
             nn.ReLU(),
-            nn.BatchNorm2d(64),
-            nn.ConvTranspose2d(64, 64, k_size, 2, padding=padding),
-            nn.ReLU(),
-            nn.BatchNorm2d(64),
-            nn.ConvTranspose2d(64, 64, k_size, 2, padding=padding),
-            nn.ReLU(),
-            nn.BatchNorm2d(64),
-            nn.ConvTranspose2d(64, 64, k_size, 2, padding=padding),
-            nn.ReLU(),
-            nn.Conv2d(64, 1, 1),
+            nn.Conv2d(32, 1, 1),
             nn.ReLU()
         )
 
 
     def forward(self, x, cold=False):
         signal_map = self.dmds(x, cold)
+        signal_map = self.reg(signal_map)
         signals = signal_map.view(-1, self.dmd_count, 1,1)
         output = self.conv_decoder(signals)
         return output

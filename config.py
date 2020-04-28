@@ -52,7 +52,8 @@ misc_arg.add_argument('--adaptive_multi', type=int, default=1,
                       help='# of DMD patterns to use at a time for adaptive approaches')
 misc_arg.add_argument('--noise', type=float, default=0.0,
                       help='sensor readout noise (absolute gaussian)')
-
+misc_arg.add_argument('--dmd_type', type=str, default='spatial',
+                      help='Type of DMD to use (spatial or frequency)')
 
 def get_config():
     config, unparsed = parser.parse_known_args()

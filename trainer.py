@@ -1,4 +1,5 @@
 from torch.optim.adamw import AdamW
+from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
 from tqdm import tqdm
 from utils import AverageMeter
@@ -22,16 +23,22 @@ class Trainer:
         self.classification = criterion == F.nll_loss
         if use_gpu:
             self.network.cuda()
-        self.dmd_optim = AdamW(self.network.dmds.parameters(), lr=init_lr)
-        self.optimizer = AdamW(self.network.parameters(), lr=init_lr)
+        # params = list(self.network.parameters()) + list(self.network.dmds.parameters())
+        self.dmd_optim = Adam(self.network.dmds.parameters(), lr=0.001)
+        self.optimizer = Adam(self.network.parameters(), lr=init_lr)
 
     def train(self):
         self.record_logits(0)
+        best_val_loss = None
         for epoch in range(self.epochs):
             # train
             metrics = self.run_one_epoch(self.train_loader, epoch, True)
             # validate
             metrics.update(self.run_one_epoch(self.val_loader, epoch, False))
+            if best_val_loss is None or best_val_loss > metrics['val_loss']:
+                old_loss = best_val_loss
+                best_val_loss = metrics['val_loss']
+                print(f"val loss improved from {old_loss} to {best_val_loss}")
             self.record_logits(epoch + 1)
             wandb.log(metrics, step=epoch + 1)
 
@@ -93,13 +100,13 @@ class Trainer:
         logits = self.network.dmds.logits.cpu().detach()
         save_dir = os.path.join(directory, 'logits', self.run_name, f'epoch_{step}')
         os.makedirs(save_dir, exist_ok=True)
-        for i in range(logits.shape[1]):
-            np.save(os.path.join(save_dir, f'pattern_{i}.npy'), logits[:,i])
+        for i in range(logits.shape[0]):
+            np.save(os.path.join(save_dir, f'pattern_{i}.npy'), logits[i,:])
         # save the logits to disk based on the wandb run id
         # TODO: change shape to be a variable
         odds = torch.exp(logits)
         dmd_probs = odds/(1 + odds)
-        images = [wandb.Image(dmd_probs[:,i].reshape(-1, int(np.sqrt(self.network.input_size))) * 255, caption=f"DMD {i + 1}") for i in range(min(4, dmd_probs.shape[1]))]
+        images = [wandb.Image(dmd_probs[i, :].reshape(-1, int(np.sqrt(self.network.input_size))) * 255, caption=f"DMD {i + 1}") for i in range(min(4, dmd_probs.shape[0]))]
         wandb.log({
             'sampling_probs': images
         }, step=step, commit=False)
@@ -162,17 +169,34 @@ class AdaptiveClassificationTrainer(Trainer):
 
 class FixedClassificationTrainer(Trainer):
     def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True, criterion=F.nll_loss):
+        self.lr = init_lr
         super().__init__(network, train_loader, val_loader, epochs, use_gpu, criterion, init_lr=init_lr)
 
     def train(self):
         self.record_logits(0)
+        best_val_loss = None
+        time_since_last_improvement = 0
         for epoch in range(self.epochs):
             # train
             metrics = self.run_one_epoch(self.train_loader, epoch, True)
             # validate
             metrics.update(self.run_one_epoch(self.val_loader, epoch, False))
-            # log
-            wandb.log(metrics, step=epoch + 1)
+            if best_val_loss is None or best_val_loss > metrics['val_loss']:
+                old_loss = best_val_loss
+                best_val_loss = metrics['val_loss']
+                time_since_last_improvement = 0
+                print(f"val loss improved from {old_loss} to {best_val_loss}")
+            else:
+                time_since_last_improvement += 1
+            if time_since_last_improvement > 5:
+                time_since_last_improvement = 0
+                self.lr = self.lr / np.sqrt(10)
+                print(f"Reducing LR to {self.lr}")
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = self.lr
+                for param_group in self.dmd_optim.param_groups:
+                    param_group['lr'] = self.lr
             self.record_logits(epoch + 1)
+            wandb.log(metrics, step=epoch + 1)
 
 
