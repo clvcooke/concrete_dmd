@@ -20,16 +20,17 @@ class Trainer:
         self.network = network
         self.run_name = os.path.basename(wandb.run.path)
         self.criterion = criterion
+        self.lr = init_lr
         self.classification = criterion == F.nll_loss
         if use_gpu:
             self.network.cuda()
-        # params = list(self.network.parameters()) + list(self.network.dmds.parameters())
-        self.dmd_optim = Adam(self.network.dmds.parameters(), lr=0.001)
+        self.dmd_optim = Adam(self.network.dmds.parameters(), lr=init_lr)
         self.optimizer = Adam(self.network.parameters(), lr=init_lr)
 
     def train(self):
         self.record_logits(0)
         best_val_loss = None
+        time_since_last_improvement = 0
         for epoch in range(self.epochs):
             # train
             metrics = self.run_one_epoch(self.train_loader, epoch, True)
@@ -38,7 +39,18 @@ class Trainer:
             if best_val_loss is None or best_val_loss > metrics['val_loss']:
                 old_loss = best_val_loss
                 best_val_loss = metrics['val_loss']
+                time_since_last_improvement = 0
                 print(f"val loss improved from {old_loss} to {best_val_loss}")
+            else:
+                time_since_last_improvement += 1
+            if time_since_last_improvement > 5:
+                time_since_last_improvement = 0
+                self.lr = self.lr / np.sqrt(10)
+                print(f"Reducing LR to {self.lr}")
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = self.lr
+                for param_group in self.dmd_optim.param_groups:
+                    param_group['lr'] = self.lr
             self.record_logits(epoch + 1)
             wandb.log(metrics, step=epoch + 1)
 
@@ -169,34 +181,6 @@ class AdaptiveClassificationTrainer(Trainer):
 
 class FixedClassificationTrainer(Trainer):
     def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True, criterion=F.nll_loss):
-        self.lr = init_lr
         super().__init__(network, train_loader, val_loader, epochs, use_gpu, criterion, init_lr=init_lr)
-
-    def train(self):
-        self.record_logits(0)
-        best_val_loss = None
-        time_since_last_improvement = 0
-        for epoch in range(self.epochs):
-            # train
-            metrics = self.run_one_epoch(self.train_loader, epoch, True)
-            # validate
-            metrics.update(self.run_one_epoch(self.val_loader, epoch, False))
-            if best_val_loss is None or best_val_loss > metrics['val_loss']:
-                old_loss = best_val_loss
-                best_val_loss = metrics['val_loss']
-                time_since_last_improvement = 0
-                print(f"val loss improved from {old_loss} to {best_val_loss}")
-            else:
-                time_since_last_improvement += 1
-            if time_since_last_improvement > 5:
-                time_since_last_improvement = 0
-                self.lr = self.lr / np.sqrt(10)
-                print(f"Reducing LR to {self.lr}")
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = self.lr
-                for param_group in self.dmd_optim.param_groups:
-                    param_group['lr'] = self.lr
-            self.record_logits(epoch + 1)
-            wandb.log(metrics, step=epoch + 1)
 
 
