@@ -17,9 +17,9 @@ def main(config):
     torch.set_num_threads(1)
     if config.use_gpu:
         torch.cuda.manual_seed(config.random_seed)
-    train_loader, val_loader = dataloader.load_train_data(config.task, batch_size=config.batch_size,
+    train_loader, val_loader, image_size = dataloader.load_train_data(config.task, batch_size=config.batch_size,
                                                           resolution=config.resolution)
-    if config.task.lower() == 'mnist':
+    if config.task.lower() == 'mnist' or config.task.lower() == 'cifar':
         adaptive = config.adaptive
         if adaptive:
             network_cls = AdaptiveDigitNet
@@ -46,7 +46,8 @@ def main(config):
 
     network = network_cls(dmd_count=config.num_patterns, temperature=config.temp, hidden_size=config.hidden_size,
                           adaptive_multi=config.adaptive_multi, init_strategy=config.init_strategy,
-                          resolution=config.resolution, noise=config.noise, dmd_type=dmd_type)
+                          resolution=config.resolution, noise=config.noise, dmd_type=dmd_type,
+                          input_size=image_size)
     trainer = trainer_cls(network, train_loader, val_loader, init_lr=config.init_lr, epochs=config.epochs,
                           use_gpu=config.use_gpu)
     wandb.config.update(config)

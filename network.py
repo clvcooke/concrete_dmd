@@ -5,43 +5,63 @@ import numpy as np
 
 class FixedDigitNet(nn.Module):
     def __init__(self, input_size=784, dmd_count=1, temperature=1, num_classes=10, dmd_type=FixedDMDSpatial,
-                 hidden_size=32, init_strategy="flat", **kwargs):
+                 hidden_size=32, init_strategy="mlp", network_arch='mlp', **kwargs):
         super(FixedDigitNet, self).__init__()
         self.input_size = input_size
         self.dmd_count = dmd_count
         self.resolution = int(np.sqrt(self.input_size))
-        self.signal_map = nn.Sequential(
-            nn.BatchNorm1d(self.dmd_count),
-            nn.Linear(self.dmd_count, self.input_size),
-            nn.ReLU()
-        )
-        self.simple_cnn = nn.Sequential(
-            nn.Conv2d(1, 32, 5),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 64, 5),
-            nn.ReLU(),
-            nn.MaxPool2d(3, 3)
-        )
-
-        self.simple_mlp = nn.Sequential(
-            nn.Linear(256, 150),
-            nn.ReLU(),
-            nn.Linear(150, 10),
-            # nn.ReLU(),
-            nn.Softmax(dim=-1)
-        )
+        self.network_arch = network_arch
+        if network_arch == 'cnn':
+            self.signal_map = nn.Sequential(
+                nn.BatchNorm1d(self.dmd_count),
+                nn.Linear(self.dmd_count, self.input_size),
+                nn.ReLU(),
+                # nn.BatchNorm1d(self.input_size),
+            )
+            self.simple_cnn = nn.Sequential(
+                nn.Conv2d(1, 32, 5, padding=2),
+                nn.ReLU(),
+                # nn.BatchNorm2d(32),
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(32, 64, 5, padding=2),
+                nn.ReLU(),
+                # nn.BatchNorm2d(64),
+                nn.MaxPool2d(3, 3)
+            )
+            self.fc_size = 1024
+            self.simple_mlp = nn.Sequential(
+                nn.BatchNorm1d(self.dmd_count),
+                nn.Linear(self.fc_size, 150),
+                nn.ReLU(),
+                nn.BatchNorm1d(150),
+                nn.Linear(150, 10),
+                # nn.ReLU(),
+                nn.LogSoftmax(dim=-1)
+            )
+        else:
+            self.simple_mlp = nn.Sequential(
+                nn.BatchNorm1d(self.dmd_count),
+                nn.Linear(self.dmd_count, 300),
+                nn.ReLU(),
+                nn.BatchNorm1d(300),
+                nn.Linear(300, 150),
+                nn.ReLU(),
+                nn.Linear(150, num_classes),
+                nn.LogSoftmax(dim=-1)
+            )
 
         self.dmds = dmd_type(input_size, dmd_count, temperature, init_strategy)
 
     def forward(self, x, cold=False):
         # sensed is (B, self.trajectory_length)
         sensed = self.dmds(x, cold)
-        remapped = self.signal_map(sensed)
-        conved = self.simple_cnn(remapped.view(-1, 1, self.resolution, self.resolution))
-        classified = self.simple_mlp(conved.view(-1, 256))
+        if self.network_arch == 'cnn':
+            remapped = self.signal_map(sensed)
+            conved = self.simple_cnn(remapped.view(-1, 1, self.resolution, self.resolution))
+            classified = self.simple_mlp(conved.view(-1, self.fc_size))
+        else:
+            classified = self.simple_mlp(sensed)
         return classified
-
 
 class AdaptiveDigitNet(nn.Module):
     def __init__(self, input_size=784, dmd_count=1, temperature=1, first_fixed=True, num_classes=10, hidden_size=32,

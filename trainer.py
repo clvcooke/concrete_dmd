@@ -24,8 +24,10 @@ class Trainer:
         self.classification = criterion == F.nll_loss
         if use_gpu:
             self.network.cuda()
-        self.dmd_optim = Adam(self.network.dmds.parameters(), lr=init_lr)
+        self.dmd_optim = Adam(self.network.dmds.parameters(), lr=0.001)
         self.optimizer = Adam(self.network.parameters(), lr=init_lr)
+        sqrt = int(np.sqrt(self.network.input_size))
+        self.logit_shape = (sqrt, sqrt)
 
     def train(self):
         self.record_logits(0)
@@ -36,14 +38,14 @@ class Trainer:
             metrics = self.run_one_epoch(self.train_loader, epoch, True)
             # validate
             metrics.update(self.run_one_epoch(self.val_loader, epoch, False))
-            if best_val_loss is None or best_val_loss > metrics['val_loss']:
+            if best_val_loss is None or best_val_loss > metrics['train_loss']:
                 old_loss = best_val_loss
                 best_val_loss = metrics['val_loss']
                 time_since_last_improvement = 0
                 print(f"val loss improved from {old_loss} to {best_val_loss}")
             else:
                 time_since_last_improvement += 1
-            if time_since_last_improvement > 5:
+            if time_since_last_improvement > 10:
                 time_since_last_improvement = 0
                 self.lr = self.lr / np.sqrt(10)
                 print(f"Reducing LR to {self.lr}")
@@ -62,8 +64,8 @@ class Trainer:
         for data, target in pbar:
             if self.use_gpu:
                 data, target = data.cuda(), target.cuda()
-            # output = self.network(data, cold=not training)
-            output = self.network(data)
+            output = self.network(data, cold=not training)
+            # output = self.network(data)
             if self.classification:
                 loss = self.criterion(output, target)
             else:
@@ -80,7 +82,7 @@ class Trainer:
                 avg_acc.update(acc)
                 desc = f'Epoch {curr_epoch} - acc: {avg_acc.avg:.4f} - loss {avg_loss.avg:.4f}'
             else:
-                ssim = 1- kornia.losses.ssim(data, output, 11, reduction='mean').item()
+                ssim = 1 - kornia.losses.ssim(data, output, 11, reduction='mean').item()
                 # ssim = measure.compare_ssim(data.cpu(), output.cpu())
                 avg_ssim.update(ssim)
                 desc = f'Epoch {curr_epoch}  - ssim: {avg_ssim.avg:.4f} - loss {avg_loss.avg:.4f}'
@@ -112,13 +114,17 @@ class Trainer:
         logits = self.network.dmds.logits.cpu().detach()
         save_dir = os.path.join(directory, 'logits', self.run_name, f'epoch_{step}')
         os.makedirs(save_dir, exist_ok=True)
-        for i in range(logits.shape[0]):
-            np.save(os.path.join(save_dir, f'pattern_{i}.npy'), logits[i,:])
+        # for i in range(logits.shape[0]):
+        #     np.save(os.path.join(save_dir, f'pattern_{i}.npy'), logits[i, :])
         # save the logits to disk based on the wandb run id
         # TODO: change shape to be a variable
         odds = torch.exp(logits)
-        dmd_probs = odds/(1 + odds)
-        images = [wandb.Image(dmd_probs[i, :].reshape(-1, int(np.sqrt(self.network.input_size))) * 255, caption=f"DMD {i + 1}") for i in range(min(4, dmd_probs.shape[0]))]
+        dmd_probs = odds / (1 + odds)
+        images = []
+        for i in range(min(4, dmd_probs.shape[0])):
+            probs_image = np.int0(dmd_probs[i, :].reshape(self.logit_shape) * 255)
+            image = wandb.Image(probs_image, caption=f"DMD {i + 1}")
+            images.append(image)
         wandb.log({
             'sampling_probs': images
         }, step=step, commit=False)
@@ -126,14 +132,15 @@ class Trainer:
     @staticmethod
     def record_images(step, output, target):
         # take the first 4 always
-        images = [wandb.Image(output[i,0,:,:]*255, caption=f"Val Image {i+1}") for i in range(4)]
-        targets = [wandb.Image(target[i,0,:,:]*255, caption=f"Val Image {i+1}") for i in range(4)]
+        images = [wandb.Image(output[i, 0, :, :] * 255, caption=f"Val Image {i + 1}") for i in range(4)]
+        targets = [wandb.Image(target[i, 0, :, :] * 255, caption=f"Val Image {i + 1}") for i in range(4)]
         wandb.log(
             {
                 'val_predictions': images,
                 'val_targets': targets
             }, step=step, commit=False
         )
+
 
 class ReconTrainer(Trainer):
     def __init__(self, network, train_loader, val_loader, epochs, use_gpu, init_lr):
@@ -182,5 +189,3 @@ class AdaptiveClassificationTrainer(Trainer):
 class FixedClassificationTrainer(Trainer):
     def __init__(self, network, train_loader, val_loader, init_lr=3e-4, epochs=10, use_gpu=True, criterion=F.nll_loss):
         super().__init__(network, train_loader, val_loader, epochs, use_gpu, criterion, init_lr=init_lr)
-
-

@@ -40,7 +40,7 @@ class FixedDMDAperture(nn.Module):
         else:
             samples = dist.rsample()
         # reshape so broadcasting works properly
-        samples = samples.view(batch_size, self.output_size, self.input_size, 1)
+        samples = samples.view(batch_size, self.output_size, self.input_size)
         # mask the frequencies (B, output_size, width*height, 2)
         sensed_freq = x_freq * samples
         # reshape for ifft
@@ -81,12 +81,14 @@ class FixedDMDSpatial(nn.Module):
     def forward(self, x, cold=False):
         # view x as a vector of (batch_size, input_size)
         batch_size = x.shape[0]
+        # logits are (B, output_size, 1, resolution*resolution)
         logits_expanded = self.logits.expand((batch_size, self.output_size, self.input_size))
         sensed = self.dmd(x / self.input_size, logits_expanded, cold=cold)
         # readout noise std
-        noise_scale = self.noise * torch.sqrt(sensed.detach())
-        sensed += torch.randn_like(sensed) * noise_scale
-        # # now scale and bias
+        if self.noise > 0.0:
+            noise_scale = self.noise * torch.sqrt(sensed.detach())
+            sensed += torch.randn_like(sensed) * noise_scale
+        # # # now scale and bias
         # sensed_scaled = sensed * self.sense_scale
         # sensed_biased = sensed_scaled + self.sense_bias
         return sensed
@@ -106,20 +108,23 @@ class ParameterizableDMDSpatial(nn.Module):
         self.output_size = output_size
 
     def forward(self, x, logits, cold=False):
-        x_local = x.view(-1, 1, self.input_size)
-        # make a dist which has samples (batch_size, input_size, 2)
+        batch_size = x.shape[0]
+        # x_local is (B, 1, resolution*resolution)
+        x_local = x.view(batch_size,-1, self.input_size)
         if cold:
-            temperature = 0.0
+            temperature = 0.001
         else:
             temperature = self.temperature
+        # samples are (B, output_size, 1, resolution*resolution)
         dist = RelaxedBernoulli(temperature=temperature, logits=logits)
         if cold:
             samples = dist.sample()
         else:
             samples = dist.rsample()
-        # now "mask" the pixels of the input spatially by elementwise multiply, we throw away the second value
+        # now "mask" the pixels of the input spatially by elementwise multiply
+        # masked_x is (B, output_size, C, resolution*resolution)
         masked_x = samples * x_local
-        # get sensor values, shape of (B)
+        # get sensor values, shape of (B, output_size), summing across both channel and pixels
         sensed = masked_x.sum(axis=-1)
         return sensed
 
